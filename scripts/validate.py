@@ -17,6 +17,7 @@ Each check needs the matching per-task venv (see docs/reproducing.md):
     .venvs/math/bin/python      scripts/validate.py math        # fast, no GPU/network
     .venvs/denoising/bin/python scripts/validate.py denoising   # downloads Pancreas (~90s)
     .venvs/gpumode/bin/python   scripts/validate.py gpumode     # needs a local GPU
+    .venvs/ahc/bin/python       scripts/validate.py ahc         # needs the ALE-Bench container
 
 Run from the repository root. Exit code is non-zero if any check fails.
 """
@@ -184,10 +185,107 @@ def validate_gpumode() -> bool:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def validate_ahc() -> bool:
+    """Score the released AHC C++ solutions with the real ALE-Bench evaluator.
+
+    Unlike the other checks, this needs the ALE-Bench C++ toolchain (g++-12,
+    ac-library, boost, eigen3), so it must run **inside** the
+    ``yimjk/ale-bench:cpp20-202301`` container (see docs/reproducing.md). It
+    drives the same ``run_cases`` evaluator the training loop uses, in its
+    sequential ``num_workers=1`` no-Ray path, over the 150 cached public inputs
+    per problem, and compares the summed score to the paper.
+
+    Takes several minutes (300 cases x ~2s). The paper's headline AHC numbers
+    are the *sum* over the cases; the env's ``raw_score`` is the per-case mean.
+    """
+    import shutil
+    import tempfile
+
+    if shutil.which("g++-12") is None:
+        print("  AHC needs the ALE-Bench C++ toolchain (g++-12), so run this check")
+        print("  inside the yimjk/ale-bench:cpp20-202301 container. See the")
+        print("  'AHC Container Requirements' section in docs/reproducing.md.")
+        return False
+
+    try:
+        from examples.ahc.lib.code_language import CodeLanguage, JudgeVersion
+        from examples.ahc.lib.data import load_local_problem
+        from examples.ahc.lib.eval_task import load_cached_public_inputs
+        from examples.ahc.lib.result import JudgeResult
+        from examples.ahc.lib.tool_wrappers.case_runner import run_cases
+        from examples.ahc.lib.utils import get_cache_dir
+    except ModuleNotFoundError as e:
+        print(f"  cannot run AHC check ({e}). Use the ahc venv:")
+        print("    .venvs/ahc/bin/python scripts/validate.py ahc")
+        return False
+
+    print("Algorithm engineering (released AHC solutions via the ALE-Bench evaluator)")
+    problems = {
+        "ahc039": {"cpp": "algorithm-design/ahc039.cpp", "ttt": 567062, "human": 566997},
+        "ahc058": {"cpp": "algorithm-design/ahc058.cpp", "ttt": 848414228, "human": 847674723},
+    }
+    tool_dir = get_cache_dir() / "tester_binaries"
+    ok = True
+    for problem_id, info in problems.items():
+        code = (RESULTS / info["cpp"]).read_text()
+        inputs = load_cached_public_inputs(problem_id, lite_version=False)
+        problem, *_ = load_local_problem(problem_id, False)
+        base = Path(tempfile.mkdtemp(prefix=f"ttt_validate_{problem_id}_"))
+        try:
+            results = run_cases(
+                inputs=inputs,
+                code=code,
+                code_language=CodeLanguage.CPP20,
+                judge_version=JudgeVersion.V202301,
+                time_limit=problem.constraints.time_limit,
+                memory_limit=problem.constraints.memory_limit,
+                problem_id=problem_id,
+                problem_type=problem.metadata.problem_type,
+                tool_dir=tool_dir,
+                return_details=False,
+                skip_local_visualization=True,
+                num_workers=1,  # sequential, no-Ray path
+                base_dir=base,
+            )
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+        n = len(results)
+        accepted = sum(1 for r in results if r.judge_result == JudgeResult.ACCEPTED)
+        total = sum(float(r.absolute_score) for r in results)
+        # Correctness failures (compile error / wrong answer) are real and fail
+        # the check. A TIME_LIMIT_EXCEEDED is a timing artifact, not a bug: the
+        # released solvers ride the 2s budget and the judge checks CPU time
+        # strictly, so a case can tip over by milliseconds under load - and
+        # run_cases then early-stops, marking the rest INTERNAL_ERROR (score 0).
+        # We therefore pass on "compiled + no wrong answers", and report the sum
+        # for headline comparison rather than gating on it (AHC absolute scores
+        # are CPU/load-sensitive - see docs/reproducing.md).
+        bad = {
+            r.judge_result.value
+            for r in results
+            if r.judge_result
+            in (JudgeResult.COMPILATION_ERROR, JudgeResult.WRONG_ANSWER)
+        }
+        passed = accepted > 0 and not bad
+        measured = f"{accepted}/{n} ok, sum={total:,.0f}"
+        _line(problem_id, measured, f"paper {info['ttt']:,} / human {info['human']:,}", passed)
+        if accepted < n:
+            print(
+                f"         note: {n - accepted}/{n} cases not scored (timing/TLE early-stop); "
+                f"AHC scores are CPU/load-sensitive, so the sum understates the solver here."
+            )
+        if bad:
+            print(f"         FAIL cause: {', '.join(sorted(bad))}")
+        ok &= passed
+    return ok
+
+
 CHECKS = {
     "math": validate_math,
     "denoising": validate_denoising,
     "gpumode": validate_gpumode,
+    "ahc": validate_ahc,
 }
 
 

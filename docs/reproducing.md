@@ -73,9 +73,24 @@ works by scoring those solutions with `scripts/validate.py`:
 .venvs/math/bin/python      scripts/validate.py math        # fast, no GPU/network
 .venvs/denoising/bin/python scripts/validate.py denoising   # downloads Pancreas (~90s)
 .venvs/gpumode/bin/python   scripts/validate.py gpumode     # needs a local GPU
+.venvs/ahc/bin/python       scripts/validate.py ahc         # needs the ALE-Bench container
 ```
 
 Each check prints the measured metric next to the value reported in the paper.
+
+The `ahc` check scores the released `results/algorithm-design/*.cpp` solutions
+with the real ALE-Bench evaluator (`run_cases`, sequential `num_workers=1`
+no-Ray path) over the 150 cached public inputs per problem. It needs the g++-12
+toolchain, so run it inside the `yimjk/ale-bench:cpp20-202301` container (see
+"AHC Container Requirements" below) after `bash examples/ahc/get_cache.sh`. It
+takes several minutes; the printed sum-over-cases is the paper's headline AHC
+metric, while the env's `raw_score` is the per-case mean. The check passes on
+"compiled + no wrong answers" rather than on beating the human score, because
+AHC absolute scores are CPU/load-sensitive: the released solvers ride the 2s
+limit and the judge checks CPU time strictly, so a case can exceed it by
+milliseconds under load (a `TIME_LIMIT_EXCEEDED` then early-stops the run and
+zeroes the remaining cases, understating the sum). Run on idle HPC-grade CPUs
+for the headline numbers.
 
 ## Running Tasks
 
@@ -90,6 +105,25 @@ with the matching venv's interpreter (see the table above):
 
 Note that `python -m examples.<task_dir>.env` invokes `discover()`, which needs
 the Tinker / Hugging Face / Weights & Biases credentials from the README.
+
+### Live Tinker service: required dependency versions
+
+The frozen `requirements/` files originally pinned `tinker==0.7.0`, which the
+hosted Tinker service now rejects (`HTTP 400: SDK version no longer supported`).
+The requirement files have been bumped to `tinker==0.22.3` and `wandb==0.27.2`;
+in the `math` venv this also pulls `transformers==5.10.2` and `protobuf==7.35.0`
+(the newer `wandb` is required because `protobuf>=7` breaks the old one). If you
+provisioned a venv before this bump, refresh it:
+
+```bash
+uv pip install --python .venvs/<task>/bin/python -U tinker wandb
+```
+
+Only the `math`/Erdos path has been re-run end-to-end against the live service;
+the other venvs were resolution-checked but not re-trained. The first run on a
+brand-new W&B project also needs that project to already exist on the server
+(the logger looks up prior runs to resume) - either create it once or set
+`wandb_project=""` to skip W&B.
 
 
 ## Getting Final Performance

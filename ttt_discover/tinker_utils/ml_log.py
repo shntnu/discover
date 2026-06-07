@@ -442,17 +442,25 @@ def initialize_or_resume_wandb_logger(wandb_project, config, log_dir, wandb_name
 
     project_path = f"{entity}/{wandb_project}"
 
-    # Filter by run "Name" (API key is `display_name`)
-    runs = api.runs(project_path, filters={"display_name": wandb_name})
-
     latest_run_id = None
     latest_created_at = None
 
-    # Find the most recent run with this name
-    for run in runs:
-        if latest_created_at is None or run.created_at > latest_created_at:
-            latest_created_at = run.created_at
-            latest_run_id = run.id
+    # Find the most recent run with this name (API key is `display_name`).
+    # A brand-new project does not exist on the W&B server yet, and api.runs(...)
+    # raises "Could not find project" the moment it is iterated. Treat that (and
+    # any other lookup failure) as "no prior runs" so the first run on a fresh
+    # project starts cleanly instead of crashing the whole training job.
+    try:
+        runs = api.runs(project_path, filters={"display_name": wandb_name})
+        for run in runs:
+            if latest_created_at is None or run.created_at > latest_created_at:
+                latest_created_at = run.created_at
+                latest_run_id = run.id
+    except Exception as e:
+        print(
+            f"WARNING: could not query existing W&B runs for {project_path} "
+            f"({e}); starting a fresh run."
+        )
 
     # Construct your logger – assumes WandbLogger is already imported / defined
     logger = WandbLogger(
