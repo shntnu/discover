@@ -2,20 +2,15 @@
 
 ## Setup
 
-```bash
-uv venv .venv
-source .venv/bin/activate
+The authoritative, step-by-step setup (matching the per-task `.venvs/<task>`
+convention) lives in
+[requirements/denoising/README.md](../../requirements/denoising/README.md). It
+creates `.venvs/denoising`, clones OpenProblems v1.0.0 into the gitignored
+`.openproblems/` directory, applies the patch, and installs everything. Follow
+that file rather than the abbreviated steps that used to live here.
 
-uv pip install magic-impute
-uv pip install git+https://github.com/czbiohub/molecular-cross-validation.git
-
-git clone https://github.com/openproblems-bio/openproblems.git
-cd openproblems && git checkout v1.0.0 && cd ..
-uv pip install -e ./openproblems
-
-# Apply API fix
-cd openproblems && git apply ../openproblems_api_fix.patch && cd ..
-```
+Once set up, run the released solver with `scripts/validate.py denoising` (see
+[docs/reproducing.md](../../docs/reproducing.md)).
 
 ## Known Issues
 

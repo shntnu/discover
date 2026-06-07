@@ -28,6 +28,9 @@
 
 ## Installation
 
+To use the library API in your own project (defining environments, importing
+`ttt_discover`):
+
 ```bash
 pip install ttt-discover
 ```
@@ -37,13 +40,34 @@ Or from source:
 pip install -e .
 ```
 
-Set environment variables:
+To **reproduce a task from the paper**, this top-level install is not enough -
+each task has its own pinned dependencies and Python version (gpu_mode needs
+3.13, the rest 3.11). Provision the matching per-task environment as described
+in [docs/reproducing.md](docs/reproducing.md).
+
+Running the `discover()` training loop requires a [Tinker](https://thinkingmachines.ai/tinker/)
+API key plus Hugging Face and Weights & Biases credentials:
 
 ```bash
 export HF_TOKEN="..."
-export TINKER_API_KEY="..."      
-export WANDB_API_KEY="..."       
-export WANDB_ENTITY="..."        
+export TINKER_API_KEY="..."
+export WANDB_API_KEY="..."
+export WANDB_ENTITY="..."
+```
+
+### Validate your setup (no Tinker needed)
+
+The reward evaluators run independently of Tinker, and this repo ships the
+discovered solutions under `results/`. `scripts/validate.py` scores those
+solutions with the same evaluators the training loop uses and prints the
+measured metric next to the paper's value - a quick way to confirm an
+environment works (and reproduces the headline numbers) before spending Tinker
+compute. Run each check with its matching venv:
+
+```bash
+.venvs/math/bin/python      scripts/validate.py math        # fast, no GPU/network
+.venvs/denoising/bin/python scripts/validate.py denoising   # downloads Pancreas (~90s)
+.venvs/gpumode/bin/python   scripts/validate.py gpumode     # needs a local GPU
 ```
 
 ## Making your own Environment

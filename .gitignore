@@ -145,6 +145,8 @@ celerybeat.pid
 .venvs/
 # denoising task: cloned+patched openproblems checkout (.openproblems_cache/ already ignored above)
 .openproblems/
+# AHC task: test inputs + tester binaries fetched by examples/ahc/get_cache.sh
+examples/ahc/lib/cache/
 env/
 venv/
 ENV/

@@ -49,15 +49,47 @@ Install dependencies with the application-specific requirements:
 - AtCoder: `requirements/requirements-ahc.txt`  
 - Denoising: `requirements/denoising/requirements-denoising.txt` (see [README](requirements/denoising/README.md))
 
+### Which venv for which task
+
+The example `env.py` modules import their task-specific dependencies at import
+time, so a task must be run with the venv built from its own requirements file.
+Using the wrong venv fails with a `ModuleNotFoundError` (for example, the
+denoising env needs `scprep`, which only the denoising venv has).
+
+| Example module | Venv | Python |
+|----------------|------|--------|
+| `examples.erdos_min_overlap.env`, `examples.ac_inequalities.env`, `examples.circle_packing.env` | math | 3.11 |
+| `examples.denoising.env` | denoising | 3.11 |
+| `examples.ahc.env` | ahc | 3.11 |
+| `examples.gpu_mode.env` | gpumode | 3.13 |
+
+## Validate your setup without Tinker
+
+The reward evaluators do not need Tinker, and the discovered solutions ship
+under `results/`. Before launching a real (paid) run, confirm your environment
+works by scoring those solutions with `scripts/validate.py`:
+
+```bash
+.venvs/math/bin/python      scripts/validate.py math        # fast, no GPU/network
+.venvs/denoising/bin/python scripts/validate.py denoising   # downloads Pancreas (~90s)
+.venvs/gpumode/bin/python   scripts/validate.py gpumode     # needs a local GPU
+```
+
+Each check prints the measured metric next to the value reported in the paper.
+
 ## Running Tasks
 
 After installing dependencies, locate the corresponding application under `examples/`
 
-Each application provides a script in `env.py` that launches the job. Run it with:
+Each application provides a script in `env.py` that launches the job. Run it
+with the matching venv's interpreter (see the table above):
 
 ```
-python -m examples.<task_dir>.env
+.venvs/<task>/bin/python -m examples.<task_dir>.env
 ```
+
+Note that `python -m examples.<task_dir>.env` invokes `discover()`, which needs
+the Tinker / Hugging Face / Weights & Biases credentials from the README.
 
 
 ## Getting Final Performance
@@ -80,6 +112,26 @@ All reported results were run using HPC-grade CPUs.
 
 Mathematics and AHC tasks will perform significantly worse if they are not run on HPC-grade CPUs or if they are limited to a small number of cores. For these tasks, it is strongly recommended to use a large number of CPU cores and multiple hosts.
 
+## GPU Mode (running locally without Modal)
+
+By default `examples.gpu_mode.env` submits kernels to Modal, which needs Modal
+credentials. The underlying GPU MODE evaluation harness, however, runs fine on a
+local GPU - `scripts/validate.py gpumode` drives it directly. To run it by hand,
+stage the harness files and a submission into one directory and invoke `eval.py`
+with the popcorn contract:
+
+```bash
+cd examples/gpu_mode/lib/bioml/trimul
+cp ../../../../../results/kernel-engineering/trimul.py submission.py
+# tests.txt holds one "key: val; key: val" line per case (see task.yml `tests:`)
+POPCORN_FD=1 POPCORN_SEED=42 python eval.py test tests.txt        # correctness
+POPCORN_FD=1 POPCORN_SEED=42 python eval.py leaderboard tests.txt # timing (ns)
+```
+
+The leaderboard score is the geometric mean of the per-benchmark runtimes; the
+ranking metric is meaningful across machines, but absolute microseconds vary by
+H100 SKU (NVL vs SXM).
+
 ## AHC Container Requirements
 
 For AHC tasks, jobs must be launched inside the ALE-Bench provided C++ container:
@@ -88,5 +140,14 @@ For AHC tasks, jobs must be launched inside the ALE-Bench provided C++ container
 
 Docker Hub:
 https://hub.docker.com/layers/yimjk/ale-bench/cpp20-202301/images/sha256-946af1b209a84160594e43262b5157aec933938c99e2585b53042cac9bc3f43c
+
+The container is required because the judge compiles submissions with
+`g++-12 -DATCODER -I/opt/ac-library -I/opt/boost/gcc/include -lgmpxx -lgmp -I/usr/include/eigen3`,
+and the case runner executes that command in the **same process environment**
+(it does not shell out to a separate container per case). On a bare host without
+that exact toolchain you get `COMPILATION_ERROR: g++-12 not found` for every
+case. First download the cached test inputs and tester binaries
+(`bash examples/ahc/get_cache.sh`), then launch the job from inside the
+container.
 
 We support the Pyxis Slurm plugin to launch this container across multiple nodes for AHC, but it is not strictly required.
