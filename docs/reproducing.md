@@ -2,17 +2,51 @@
 
 ## Setup
 
-To run a job, create and activate a Conda environment, then install the required dependencies for the task you want to run.
+To run a job, provision an environment with the correct Python version, then
+install the required dependencies for the task you want to run.
 
-- **gpu_mode** Conda environments must use **Python 3.13.11**
+- **gpu_mode** environments must use **Python 3.13.11**
 - All other tasks are recommended to use **Python 3.11**
+
+### Reproducible toolchain (uv + Nix)
+
+The repository ships a pinned toolchain so the interpreter and CLI tools are
+identical across machines:
+
+- `flake.nix` / `flake.lock` provide `uv`, Python 3.11 and 3.13, the system
+  libraries that PyPI binary wheels link against, and - on NixOS hosts - the
+  system NVIDIA driver path so torch's CUDA wheels can find it. Enter the dev
+  shell with `nix develop` (optional; skip if `uv` is already on your `PATH`).
+- Each task gets its own isolated `uv` virtualenv. The frozen `requirements/`
+  files remain the source of truth for exact dependency pins, so `uv pip
+  install -r` reproduces the authors' tested environment pin-for-pin (no
+  re-resolution).
+
+```bash
+# Default (Python 3.11) tasks: math, AHC, AtCoder, denoising, ...
+uv venv .venvs/math --python 3.11
+uv pip install --python .venvs/math/bin/python -r requirements/requirements-math.txt
+.venvs/math/bin/python -m examples.<task_dir>.env
+
+# gpu_mode tasks (Python 3.13)
+uv venv .venvs/gpumode --python 3.13
+uv pip install --python .venvs/gpumode/bin/python -r requirements/requirements-gpumode.txt
+.venvs/gpumode/bin/python -m examples.gpu_mode.env
+```
+
+Run tasks with the venv's interpreter directly (as above), not `uv run` - in
+this repo `uv run` would try to sync the project's own `pyproject.toml`
+dependencies and re-resolve, defeating the frozen per-task pins.
+
+A plain Conda or `venv` environment with the same Python version works equally
+well - the `requirements/` files are the source of truth either way.
 
 Each task has its own `requirements.txt` located under `requirements/`
 
 Install dependencies with the application-specific requirements:
 - Math: `requirements/requirements-math.txt`
 - GPU kernels: `requirements/requirements-gpumode.txt`
-- AtCoder: `requirements/requirements-ale.txt`  
+- AtCoder: `requirements/requirements-ahc.txt`  
 - Denoising: `requirements/denoising/requirements-denoising.txt` (see [README](requirements/denoising/README.md))
 
 ## Running Tasks

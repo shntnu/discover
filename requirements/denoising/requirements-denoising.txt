@@ -1,3 +1,7 @@
+# Build/runtime shim: openproblems v1.0.0 imports pkg_resources, which
+# setuptools dropped in 81+. A bare uv venv has no setuptools, so pin it here.
+setuptools<81
+
 # Core scientific
 numpy==2.3.5
 scipy==1.17.0

@@ -13,8 +13,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```bash
 cd /path/to/ttt-continuous
 
-uv venv .venv --python 3.11
-source .venv/bin/activate
+# Match the per-task convention in docs/reproducing.md (.venvs/<task>)
+uv venv .venvs/denoising --python 3.11
+source .venvs/denoising/bin/activate
 
 # 1. Install requirements
 uv pip install -r requirements/denoising/requirements-denoising.txt
@@ -24,14 +25,15 @@ uv pip install git+https://github.com/czbiohub/simscity.git
 uv pip install --no-deps git+https://github.com/czbiohub/molecular-cross-validation.git
 
 # 3. Clone and install openproblems (--no-deps to avoid version conflicts)
-git clone https://github.com/openproblems-bio/openproblems.git
-cd openproblems && git checkout v1.0.0 && cd ..
+#    Clone into .openproblems/ - it is gitignored so it won't show as untracked.
+git clone https://github.com/openproblems-bio/openproblems.git .openproblems
+cd .openproblems && git checkout v1.0.0 && cd ..
 
 # 4. Apply patch (MUST be done before installing)
-cd openproblems && git apply ../requirements/denoising/openproblems_api_fix.patch && cd ..
+cd .openproblems && git apply ../requirements/denoising/openproblems_api_fix.patch && cd ..
 
 # 5. Install openproblems
-uv pip install --no-deps -e ./openproblems
+uv pip install --no-deps -e ./.openproblems
 ```
 
 ## Why --no-deps for openproblems?
